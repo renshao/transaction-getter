@@ -1,0 +1,24 @@
+{
+  "name": "transaction-getter",
+  "version": "1.0.0",
+  "description": "Fetch account transactions using internet banking web page",
+  "main": "example.js",
+  "dependencies": {
+    "dotenv": "^6.1.0",
+    "puppeteer": "^1.8.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/renshao/transaction-getter.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/renshao/transaction-getter/issues"
+  },
+  "homepage": "https://github.com/renshao/transaction-getter#readme"
+}
