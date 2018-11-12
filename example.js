@@ -3,14 +3,60 @@ const puppeteer = require('puppeteer');
 
 async function fetchTransactionTable(page, dateSliderHandle) {
   await dateSliderHandle;
-  await dateSliderHandle.click();
 
   let urlRegex = /^https:\/\/www1.my.commbank.com.au\/netbank\/Transaction\/History.aspx/;
-  await page.waitForResponse(response => urlRegex.test(response.url()) && response.status() === 200);
+
+  console.log('xxxxx');
+  await Promise.all([
+    page.waitForResponse(response => response.url().match(urlRegex)),
+    dateSliderHandle.click()
+  ]);
+
+  let transactionTableHandle = await page.$('#transactionsTableBody');
+  if (transactionTableHandle == null) {
+    return null;
+  }
 
   let tableHtml = await page.$eval('#transactionsTableBody', table => table.innerHTML);
   return tableHtml;
 }
+
+async function fetchAccount(accountRowHandle) {
+  let bsb = (await accountRowHandle.$eval('.BSBField', td => td.innerText)).replace(/\s/g, '');
+  if (! bsb.match(/^\d{6}$/)) {
+    return null;
+  }
+
+  let accountNumber = (await accountRowHandle.$eval('.AccountNumberField', td => td.innerText)).replace(/\s/g, '');
+  let nickName = await accountRowHandle.$eval('.NicknameField a', a => a.innerText);
+  let accountId = `${nickName}-${bsb}-${accountNumber}`;
+  let htmlElementId = await accountRowHandle.$eval('td.NicknameField', td => td.getAttribute('id'));
+  return { id: accountId, linkSelector: `#${htmlElementId} a` };
+}
+
+async function fetchTransactionPageAndReturn(account, page) {
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'networkidle0' }),
+    page.click(account.linkSelector)
+  ]);
+
+  let dateSliders = await page.$$('.dateslider_link');
+  console.log(`Found ${dateSliders.length} dateSliders`);
+
+  for (let i = 0; i < dateSliders.length; i++) {
+    let transactionTableHtml = await fetchTransactionTable(page, dateSliders[i]);
+    console.log(transactionTableHtml);
+  }
+
+  await Promise.all([
+    page.waitForNavigation(),
+    page.click('#MainMenu a')
+  ]);
+}
+
+// If after 10 days of beginning of month, only check current month
+
+// Modes: initial_crawl | current_month
 
 (async () => {
   const browser = await puppeteer.launch();
@@ -26,15 +72,18 @@ async function fetchTransactionTable(page, dateSliderHandle) {
   await page.click('#btnLogon_field');
   await page.waitForNavigation();
 
-  let offsetHandle = await page.$('a[title=Offset]');
-  await offsetHandle.click();
-  await page.waitForNavigation({ waitUntil: 'networkidle0' });
+  let accountRowHandles = await page.$$('.main_group_account_row');
+  let accounts = [];
+  for (let i = 0; i < accountRowHandles.length; i++) {
+    let account = await fetchAccount(accountRowHandles[i]);
+    if (account !== null) {
+      accounts.push(account);
+      console.log(`Found account ${account.id}  -  selector ${account.linkSelector}`);
+    }
+  }
 
-  let dateSliders = await page.$$('.dateslider_link');
-  console.log(dateSliders.length);
-
-  for(let i = 0; i < dateSliders.length; i++) {
-    let tableHtml = await fetchTransactionTable(page, dateSliders[i]);
+  for (let i = 0; i < accounts.length; i++) {
+    await fetchTransactionPageAndReturn(accounts[i], page);
   }
 
   await browser.close();
