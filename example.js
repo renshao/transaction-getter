@@ -1,3 +1,23 @@
+// If after 10 days of beginning of month, only check current month
+
+// Modes: initial_crawl | current_month
+
+/*
+
+[
+  {
+    accountId: 'abc',
+    startDate: '2018-03',
+    transactionsHtml: '<table></table>'
+  }, {
+    accountId: 'abc',
+    startDate: '2018-03',
+    transactionsHtml: '<table></table>'
+  }
+]
+
+*/
+
 require('dotenv').load();
 const puppeteer = require('puppeteer');
 
@@ -6,7 +26,6 @@ async function fetchTransactionTable(page, dateSliderHandle) {
 
   let urlRegex = /^https:\/\/www1.my.commbank.com.au\/netbank\/Transaction\/History.aspx/;
 
-  console.log('xxxxx');
   await Promise.all([
     page.waitForResponse(response => response.url().match(urlRegex)),
     dateSliderHandle.click()
@@ -43,9 +62,27 @@ async function fetchTransactionPageAndReturn(account, page) {
   let dateSliders = await page.$$('.dateslider_link');
   console.log(`Found ${dateSliders.length} dateSliders`);
 
+  let moment = require('moment');
+  let redis = require("redis");
+  let client = redis.createClient();
+  const {promisify} = require('util');
+  const lpushAsync = promisify(client.lpush).bind(client);
+
   for (let i = 0; i < dateSliders.length; i++) {
-    let transactionTableHtml = await fetchTransactionTable(page, dateSliders[i]);
-    console.log(transactionTableHtml);
+    let dateSliderHandle = dateSliders[i];
+    await dateSliderHandle;
+    let startDate = await page.evaluate(el => el.getAttribute('data-startdate'), dateSliderHandle);
+    let transactionTableHtml = await fetchTransactionTable(page, dateSliderHandle);
+
+    let transactionPage = {
+      accountId: account.id,
+      startDate: moment(startDate, 'DD/MM/YYYY').format('YYYY-MM-DD'),
+      transactionsHtml: transactionTableHtml
+    };
+
+    console.log(startDate);
+    const response = await lpushAsync('transactions_page_queue', JSON.stringify(transactionPage));
+    console.log(response);
   }
 
   await Promise.all([
@@ -54,9 +91,6 @@ async function fetchTransactionPageAndReturn(account, page) {
   ]);
 }
 
-// If after 10 days of beginning of month, only check current month
-
-// Modes: initial_crawl | current_month
 
 (async () => {
   const browser = await puppeteer.launch();
